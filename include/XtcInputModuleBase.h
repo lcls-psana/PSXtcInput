@@ -81,6 +81,9 @@ public:
   /// Method which is called once at the end of the job
   virtual void endJob(Event& evt, Env& env);
 
+  /// Returns True if live mode and the available events > numEvents arg
+  virtual bool liveAvail(int numEvents);
+
 protected:
   
   /**

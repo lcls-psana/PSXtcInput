@@ -27,6 +27,7 @@
 //-------------------------------
 // Collaborating Class Headers --
 //-------------------------------
+#include "XtcInput/LiveAvail.h"
 
 //------------------------------------
 // Collaborating Class Declarations --
@@ -94,6 +95,13 @@ public:
    */
   virtual bool next(std::vector<XtcInput::Dgram>& eventDg, std::vector<XtcInput::Dgram>& nonEventDg);
 
+
+
+  /**
+   * "Returns true if in live mode and the available events on disk is >= the argument numEvents
+   */
+  virtual bool liveAvail(int numEvents);
+
 protected:
 
   /**
@@ -124,6 +132,7 @@ protected:
 private:
 
   boost::scoped_ptr<XtcInput::DgramQueue> m_dgQueue;  ///< Input datagram queue
+  boost::shared_ptr<XtcInput::LiveAvail> m_liveAvail;  ///
   boost::scoped_ptr<boost::thread> m_readerThread;    ///< Thread which does datagram reading
   std::vector<std::string> m_fileNames;               ///< List of file names/datasets to read data from
   int m_firstControlStream;                           ///< Starting index of control streams

@@ -155,16 +155,10 @@ XtcInputModuleBase::XtcInputModuleBase (const std::string& name,
     // if live is mixed with dead mode, etc, here if we find "live" in one of the files, we assume
     // live mode 
 
-    // TODO: Presently - LiveFilesDB does not know how to get small data filenames - so if live mode is 
-    // present, and smd is as well, we'd like to warn the user
-    bool smallData = false;
     for (std::list<std::string>::iterator file = files.begin(); file != files.end(); ++file) {
       IData::Dataset ds(*file);
       if (ds.exists("live")) {
         m_liveMode = true;
-      }
-      if (ds.exists("smd")) {
-        smallData = true;
       }
     }
   } catch (ConfigSvc::Exception &) {
@@ -762,8 +756,10 @@ XtcInputModuleBase::fillEnv(const XtcInput::Dgram& dg, Env& env)
     
   }
   if (smallDataProxy) smallDataProxy->finalize();
-
 }
 
+bool XtcInputModuleBase::liveAvail(int numEvents) {
+  return m_dgsource->liveAvail(numEvents);
+}
 
 } // namespace PSXtcInput

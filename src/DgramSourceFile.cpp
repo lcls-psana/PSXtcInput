@@ -151,6 +151,7 @@ DgramSourceFile::init()
   m_readerThread.reset( new boost::thread( DgramReader ( m_fileNames.begin(), 
                                                          m_fileNames.end(),
                                                          *m_dgQueue, 
+                                                         m_liveAvail,
                                                          merge, liveDbConn, 
                                                          liveTable, liveTimeout, runLiveTimeout,
                                                          l1offset, 
@@ -189,6 +190,12 @@ DgramSourceFile::next(std::vector<XtcInput::Dgram>& eventDg, std::vector<XtcInpu
   } else {
     return false;
   }
+}
+
+bool
+DgramSourceFile::liveAvail(int numEvents) {
+  if (not m_liveAvail) return false;
+  return m_liveAvail->availEventsIsAtLeast(numEvents);
 }
 
 bool DgramSourceFile::sameEvent(const XtcInput::Dgram &eventDg, const XtcInput::Dgram &otherDg) const

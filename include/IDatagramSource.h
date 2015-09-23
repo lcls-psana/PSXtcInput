@@ -90,6 +90,13 @@ public:
    */
   virtual bool next(std::vector<XtcInput::Dgram>& eventDg, std::vector<XtcInput::Dgram>& nonEventDg) = 0;
 
+
+
+  /**
+   * Returns true if live mode and the available events on disk is > the argument numEvents
+   */
+  virtual bool liveAvail(int numEvents) { return false; }
+
 protected:
 
   // Default constructor
