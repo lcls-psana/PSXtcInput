@@ -687,9 +687,18 @@ XtcInputModuleBase::fillEnv(const XtcInput::Dgram& dg, Env& env)
 
     // before we start adding all config types we need to update alias map so
     // that when we add objects to proxy dict correct version of alias map is used
-    if (env.aliasMap()) {
+    boost::shared_ptr<PSEvt::AliasMap> amap = env.aliasMap();
+    if (amap) {
       XtcInput::XtcIterator iter1(&dgptr->xtc);
       while (Pds::Xtc* xtc = iter1.next()) {
+        if (xtc->src.level()==Pds::Level::Source) {
+          const Pds::DetInfo& di = *(Pds::DetInfo*)(&xtc->src);
+          amap->addsrc(di);
+        }
+        if (xtc->src.level()==Pds::Level::Reporter) {
+          const Pds::BldInfo& bi = *(Pds::BldInfo*)(&xtc->src);
+          amap->addsrc(bi);
+        }
         if (xtc->contains.id() == Pds::TypeId::Id_AliasConfig) {
           
           boost::shared_ptr<PSEvt::AliasMap> amap = env.aliasMap();
