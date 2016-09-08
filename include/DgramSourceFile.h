@@ -123,8 +123,8 @@ protected:
    *  max difference in seconds for clocks can be changed with psana option 
    *  max_stream_clock_diff, however this should not be neccessary.
    *
-   *  @param eventDg first datagram
-   *  @param otherDg second datagram
+   *  @param dgA first datagram
+   *  @param dgB second datagram
    *  @return true if they match, false otherwise
    */
   bool fiducialSecondsMatch(const XtcInput::Dgram &dgA, const XtcInput::Dgram &dgB) const;
