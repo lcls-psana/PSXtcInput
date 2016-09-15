@@ -481,16 +481,16 @@ private:
     vector<IndexCalib>::iterator it;
     it = lower_bound(_idxcalib.begin(),_idxcalib.end(),request);
     if (it==_idxcalib.begin()) {
-      MsgLog(logger, fatal, "Calib cycle for time " << seconds << "/" << nanoseconds << " not found");
-    } else {
-      vector<IndexCalib>::iterator calib;
-      calib=it-1;
-      if (*calib!=_lastcalib) {
-        // it appears that psana takes care of sending endcalib for us
-        // need to send begincalib
-        _postOneDg(_xtc.jump((*calib).file, (*calib).entry.i64Offset),(*calib).file);
-        _lastcalib=*calib;
-      }
+      MsgLog(logger, warning, "Calib cycle for event time " << seconds << "/" << nanoseconds << " earlier than first calib-cycle time " << _idxcalib.begin()->entry.uSeconds << "/" << _idxcalib.begin()->entry.uNanoseconds << ". Sending first calib cycle.  DAQ scan information may be incorrect.");
+      it+=1;
+    }
+    vector<IndexCalib>::iterator calib;
+    calib=it-1;
+    if (*calib!=_lastcalib) {
+      // it appears that psana takes care of sending endcalib for us
+      // need to send begincalib
+      _postOneDg(_xtc.jump((*calib).file, (*calib).entry.i64Offset),(*calib).file);
+      _lastcalib=*calib;
     }
   }
 
