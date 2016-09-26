@@ -11,6 +11,11 @@ Package author: Andy Salnikov
 Please describe any modifications that you made to the package in the
 reverse time order.
 
+Tag: V00-15-22
+2016-09-26 Christopher O'Grady
+- Change fatal error in checkEpicsInterval to warning.  This triggered
+  a problem in mfxn8316 runs 255-260.
+
 Tag: V00-15-21
 2016-09-15 Christopher O'Grady
 - Workaround crash due to non-ideal DAQ calib-cycle timestamp behavior

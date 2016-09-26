@@ -289,7 +289,7 @@ public:
     Level::Type   level     = xtc->src.level();
     if (level < 0 || level >= Level::NumberOfLevels )
     {
-        MsgLog(logger, fatal,
+        MsgLog(logger, warning,
                "Unsupported level " << (int) level);
         return Continue;
     }    
