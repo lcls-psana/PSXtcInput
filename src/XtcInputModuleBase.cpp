@@ -34,8 +34,10 @@
 #include "pdsdata/psddl/alias.ddl.h"
 #include "psddl_psana/epics.ddl.h"
 #include "PSTime/Time.h"
+#include "PSXtcInput/DgOffsetIter.h"
 #include "PSXtcInput/Exceptions.h"
 #include "PSXtcInput/XtcEventId.h"
+#include "PSXtcInput/XtcEventOffset.h"
 #include "XtcInput/XtcFileName.h"
 #include "XtcInput/XtcIterator.h"
 #include "XtcInput/MergeMode.h"
@@ -136,6 +138,10 @@ XtcInputModuleBase::XtcInputModuleBase (const std::string& name,
   , m_simulateEOR(0)
   , m_run(-1)
   , m_liveMode(false)
+  , m_configureOffset(-1LL)
+  , m_beginRunOffset(-1LL)
+  , m_lastBeginCalibCycleOffset(-1LL)
+  , m_lastOffset(0)
 {
   std::fill_n(m_transitions, int(Pds::TransitionId::NumberOf), Pds::ClockTime(0, 0));
 
@@ -254,6 +260,7 @@ XtcInputModuleBase::beginJob(Event& evt, Env& env)
 
     fillEventDgList(eventDg, evt);
     fillEventId(firstDg, evt);
+    fillEventOffset(eventDg, evt);
 
     boost::shared_ptr<PSEvt::DamageMap> damageMap = boost::make_shared<PSEvt::DamageMap>();
     evt.put(damageMap);
@@ -278,6 +285,7 @@ XtcInputModuleBase::event(Event& evt, Env& env)
     MsgLog(name(), debug, name() << ": simulated EOR");
     if (m_putBack.size()) {
       fillEventId(m_putBack[0], evt);
+      fillEventOffset(m_putBack, evt);
       fillEventDgList(m_putBack, evt);
     }
     // negative means stop at next call
@@ -367,6 +375,7 @@ XtcInputModuleBase::event(Event& evt, Env& env)
       // signal new run, content is not relevant
       if (not (clock == m_transitions[trans])) {
         fillEventId(eventDg.front(), evt);
+        fillEventOffset(eventDg, evt);
         fillEventDgList(eventDg, evt);
         status = BeginRun;
         found = true;
@@ -378,6 +387,7 @@ XtcInputModuleBase::event(Event& evt, Env& env)
       // signal end of run, content is not relevant
       if (not (clock == m_transitions[trans])) {
         fillEventId(eventDg.front(), evt);
+        fillEventOffset(eventDg, evt);
         fillEventDgList(eventDg, evt);
         // reset run number, so that if next BeginRun is missing we don't reuse this run
         m_run = -1;
@@ -392,6 +402,7 @@ XtcInputModuleBase::event(Event& evt, Env& env)
       if (not (clock == m_transitions[trans])) {
         fillEnv(eventDg, env);
         fillEventId(eventDg.front(), evt);
+        fillEventOffset(eventDg, evt);
         fillEventDgList(eventDg, evt);
         status = BeginCalibCycle;
         found = true;
@@ -403,6 +414,7 @@ XtcInputModuleBase::event(Event& evt, Env& env)
       // stop calib cycle
       if (not (clock == m_transitions[trans])) {
         fillEventId(eventDg.front(), evt);
+        fillEventOffset(eventDg, evt);
         fillEventDgList(eventDg, evt);
         status = EndCalibCycle;
         found = true;
@@ -430,6 +442,7 @@ XtcInputModuleBase::event(Event& evt, Env& env)
         // reached event limit, will go in simulated end-of-run
         MsgLog(name(), debug, name() << ": event limit reached, simulated EndCalibCycle");
         fillEventId(eventDg.front(), evt);
+        fillEventOffset(eventDg, evt);
         fillEventDgList(eventDg, evt);
         found = true;
         status = EndCalibCycle;
@@ -454,6 +467,7 @@ XtcInputModuleBase::event(Event& evt, Env& env)
         fillEnv(eventDg, env);
         fillEvent(eventDg, evt, env);
         fillEventId(eventDg.front(), evt);
+        fillEventOffset(eventDg, evt);
         fillEventDgList(eventDg, evt);
         found = true;
         status = DoEvent;
@@ -604,6 +618,53 @@ XtcInputModuleBase::fillEventId(const XtcInput::Dgram& dg, Event& evt)
   unsigned control = seq.stamp().control();
   boost::shared_ptr<PSEvt::EventId> eventId = boost::make_shared<XtcEventId>(run, evtTime, fiducials, ticks, vect, control);
   evt.put(eventId);
+}
+
+void
+XtcInputModuleBase::fillEventOffset(const std::vector<XtcInput::Dgram>& dgList, Event& evt)
+{
+  MsgLog(name(), debug, name() << ": in fillEventOffset()");
+
+  std::vector<std::string> filenames;
+  std::vector<int64_t> offsets;
+  for (size_t i = 0; i < dgList.size(); i++) {
+    const XtcInput::Dgram &dg = dgList[i];
+    Dgram::ptr dgptr = dg.dg();
+
+    DgOffsetIter iter(&(dgptr->xtc));
+    iter.iterate();
+
+    std::string filename = dg.file().largeFile().path();
+    filenames.push_back(filename);
+
+    int64_t offset = iter.payload.fileOffset;
+    offsets.push_back(offset);
+
+    if (i == 0) {
+      switch(dgptr->seq.service()) {
+      case Pds::TransitionId::Configure:
+        m_configureOffset = m_lastOffset;
+        break;
+      case Pds::TransitionId::BeginRun:
+        m_beginRunOffset = m_lastOffset;
+        break;
+      case Pds::TransitionId::BeginCalibCycle:
+        m_lastBeginCalibCycleOffset = m_lastOffset;
+        m_lastBeginCalibCycleFilename = dg.file().path();
+        break;
+      case Pds::TransitionId::L1Accept:
+        // This is an event, no transition needed.
+        break;
+      default:
+        break;
+      }
+
+      m_lastOffset += dgptr->xtc.sizeofPayload()+sizeof(Pds::Dgram);
+    }
+  }
+
+  boost::shared_ptr<PSEvt::EventOffset> eventOffset = boost::make_shared<XtcEventOffset>(filenames, offsets, m_configureOffset, m_beginRunOffset, m_lastBeginCalibCycleFilename, m_lastBeginCalibCycleOffset);
+  evt.put(eventOffset);
 }
 
 void
