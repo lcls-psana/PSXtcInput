@@ -251,11 +251,11 @@ ostream& operator<<(ostream& os, const IndexCalib& idx) {
 
 // The index files do not support multiple archiving intervals
 
-class myLevelIter : public XtcIterator {
+class myLevelIter : public Pds::XtcIterator {
 public:
   enum {Stop, Continue};
   myLevelIter(Xtc* xtc, bool allowCorruptEpics) :
-    XtcIterator(xtc), _allowCorruptEpics(allowCorruptEpics) {}
+    Pds::XtcIterator(xtc), _allowCorruptEpics(allowCorruptEpics) {}
 
   void process(const Epics::ConfigV1& e) {
     int32_t numpv = e.numPv();
