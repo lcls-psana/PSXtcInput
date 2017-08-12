@@ -48,6 +48,7 @@
 
 using namespace XtcInput;
 using namespace std;
+using namespace Pds;
 
 //		----------------------------------------
 // 		-- Public Function Member Definitions --
@@ -251,11 +252,11 @@ ostream& operator<<(ostream& os, const IndexCalib& idx) {
 
 // The index files do not support multiple archiving intervals
 
-class myLevelIter : public Pds::XtcIterator {
+class myLevelIter : public XtcIterator {
 public:
   enum {Stop, Continue};
   myLevelIter(Xtc* xtc, bool allowCorruptEpics) :
-    Pds::XtcIterator(xtc), _allowCorruptEpics(allowCorruptEpics) {}
+    XtcIterator(xtc), _allowCorruptEpics(allowCorruptEpics) {}
 
   void process(const Epics::ConfigV1& e) {
     int32_t numpv = e.numPv();
