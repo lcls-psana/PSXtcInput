@@ -75,6 +75,15 @@ public:
 
 };
 
+// thrown when xtc file open fails
+class RandomAccessSeekFailed : public Exception {
+public:
+
+  RandomAccessSeekFailed(const ErrSvc::Context& ctx)
+    : Exception( ctx, "RandomAccessSeekFailed", "Random access seek failed" ) {}
+
+};
+
 // thrown for empty file
 class EmptyInput : public Exception {
 public:

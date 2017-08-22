@@ -101,6 +101,9 @@ protected:
   /// Fill event with EventId information
   void fillEventId(const XtcInput::Dgram& dg, Event& evt);
 
+  /// Fill event with EventOffset information
+  void fillEventOffset(const std::vector<XtcInput::Dgram>& dgList, Event& evt);
+
   /// Fill event with Datagram list
   void fillEventDgList(const std::vector<XtcInput::Dgram>& dgList, Event& evt);
 
@@ -147,6 +150,11 @@ private:
   int m_run;                                          ///< Run number that comes from BeginRun transition (or -1)
   bool m_liveMode;                                    ///< true if live mode specified in psana files option
   unsigned m_liveTimeOut;                             ///< live timeout value from config
+  int64_t m_configureOffset;                          ///< Offset of Configure transition datagram.
+  int64_t m_beginRunOffset;                           ///< Offset of BeginRun transition datagram.
+  int64_t m_lastBeginCalibCycleOffset;                ///< Offset of last BeginCalibCycle transition datagram.
+  std::string m_lastBeginCalibCycleFilename;          ///< Filename containing the last BeginCalibCycle transition.
+  int64_t m_lastOffset;                               ///< Offset of the last datagram.
 };
 
 } // namespace PSXtcInput
