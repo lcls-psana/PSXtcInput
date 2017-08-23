@@ -28,6 +28,12 @@
 #include <stdlib.h>
 #include <sstream>
 
+#include <pthread.h>
+#include <legion.h>
+#include <legion_c.h>
+#include <legion_c_util.h>
+#include <unistd.h>
+
 //-------------------------------
 // Collaborating Class Headers --
 //-------------------------------
@@ -115,26 +121,175 @@ class RandomAccessXtcReader {
 public:
   RandomAccessXtcReader() {}
 
-  bool has(const std::string& filename) {
+  static bool has(const std::string& filename) {
+    // WARNING: Only call this while holding _fd_mutex
     return _fd.count(filename);
   }
 
-  int ensure(const std::string& filename) {
-    if (has(filename)) return _fd[filename];
+  static int ensure(const std::string& filename) {
+    if (!pthread_mutex_lock(&_fd_mutex)) {
+      assert(false && "pthread_mutex_lock failed\n");
+    }
+
+    if (has(filename)) {
+      int result = _fd[filename];
+
+      if (!pthread_mutex_unlock(&_fd_mutex)) {
+        assert(false && "pthread_mutex_unlock failed\n");
+      }
+
+      return result;
+    }
 
     int fd = ::open(filename.c_str(), O_RDONLY | O_LARGEFILE);
     if (fd==-1) MsgLog(logger, fatal,
                                "File " << filename.c_str() << " not found");
     _fd[filename] = fd;
+
+    if (!pthread_mutex_unlock(&_fd_mutex)) {
+      assert(false && "pthread_mutex_unlock failed\n");
+    }
+
     return fd;
   }
 
   ~RandomAccessXtcReader() {
-    for  (std::map<std::string, int>::const_iterator it = _fd.begin(); it!= _fd.end(); it++)
-      ::close(it->second);
+    // FIXME: Not safe to close fds in the destructor since the memory is now static
+    // for  (std::map<std::string, int>::const_iterator it = _fd.begin(); it!= _fd.end(); it++)
+    //   ::close(it->second);
   }
 
-  Pds::Dgram* jump(const std::string& filename, int64_t offset) {
+  static bool jump_internal(const std::string& filename, int64_t offset, Pds::Dgram* dg) {
+    int fd = ensure(filename);
+    if (::pread(fd, dg, sizeof(Pds::Dgram), offset)==0) {
+      return false;
+    } else {
+      if (dg->xtc.sizeofPayload()>MaxDgramSize)
+        MsgLog(logger, fatal, "Datagram size exceeds sanity check. Size: " << dg->xtc.sizeofPayload() << " Limit: " << MaxDgramSize);
+      ::pread(fd, dg->xtc.payload(), dg->xtc.sizeofPayload(), offset+sizeof(Pds::Dgram));
+      return true;
+    }
+  }
+
+  static bool jump_task(const Legion::Task *task,
+            const std::vector<Legion::PhysicalRegion> &regions,
+            Legion::Context ctx, Legion::HighLevelRuntime *runtime) {
+    // Unpack arguments.
+    assert(task->arglen >= sizeof(Args));
+    const Args &args = *(const Args *)task->args;
+    const char *filename_start = (const char *)(((const char *)task->args) + sizeof(Args));
+    std::string filename(filename_start, args.filename_size);
+    int64_t offset = args.offset;
+
+    // Fetch destination pointer out of region argument.
+    LegionRuntime::Accessor::RegionAccessor<LegionRuntime::Accessor::AccessorType::Generic> accessor =
+      regions[0].get_field_accessor(args.fid);
+    LegionRuntime::Arrays::Rect<1> rect = runtime->get_index_space_domain(
+      regions[0].get_logical_region().get_index_space()).get_rect<1>();
+    LegionRuntime::Arrays::Rect<1> subrect;
+    LegionRuntime::Accessor::ByteOffset stride;
+    void *base_ptr = accessor.raw_rect_ptr<1>(rect, subrect, &stride);
+    assert(base_ptr);
+    assert(subrect == rect);
+    assert(rect.lo == LegionRuntime::Arrays::Point<1>::ZEROES());
+    assert(stride.offset == 1);
+
+    // Call base jump.
+    return jump_internal(filename, offset, (Pds::Dgram *)base_ptr);
+  }
+
+  static Legion::TaskID register_jump_task() {
+    static const char * const task_name = "jump";
+    Legion::TaskVariantRegistrar registrar(task_id, task_name);
+    registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::IO_PROC));
+    Legion::Runtime::preregister_task_variant<bool, jump_task>(registrar, task_name);
+    return task_id;
+  }
+
+  static Pds::Dgram *launch_jump_task(Legion::HighLevelRuntime *runtime,
+                                      Legion::Context ctx,
+                                      const std::string &filename,
+                                      int64_t offset) {
+    // Create destination region.
+    Legion::Domain domain = Legion::Domain::from_rect<1>(
+      LegionRuntime::Arrays::Rect<1>(LegionRuntime::Arrays::Point<1>(0), LegionRuntime::Arrays::Point<1>(MaxDgramSize-1)));
+    Legion::IndexSpace ispace = runtime->create_index_space(ctx, domain);
+    Legion::FieldSpace fspace = runtime->create_field_space(ctx);
+    Legion::FieldID fid = 101;
+    {
+      Legion::FieldAllocator fsa(runtime->create_field_allocator(ctx, fspace));
+      fsa.allocate_field(1, fid);
+    }
+    Legion::LogicalRegion region = runtime->create_logical_region(ctx, ispace, fspace);
+
+    // Launch task.
+    Legion::Future f;
+    {
+      Args args;
+      args.filename_size = filename.size();
+      args.offset = offset;
+      args.fid = fid;
+      size_t bufsize = sizeof(Args) + filename.size();
+      char *buffer = (char *)malloc(bufsize);
+      *(Args *)buffer = args;
+      memcpy(buffer + sizeof(Args), filename.c_str(), filename.size());
+      Legion::TaskArgument targs(buffer, bufsize);
+
+      Legion::TaskLauncher task(task_id, targs);
+      task.add_region_requirement(
+        Legion::RegionRequirement(region, READ_WRITE, EXCLUSIVE, region).add_field(fid));
+      f = runtime->execute_task(ctx, task);
+      free(buffer);
+    }
+
+    // Map destination region.
+    Pds::Dgram *dg = 0;
+    {
+      // Launch mapping first to avoid blocking analysis on task execution.
+      Legion::InlineLauncher mapping(
+        Legion::RegionRequirement(region, READ_WRITE, EXCLUSIVE, region).add_field(fid));
+      Legion::PhysicalRegion physical = runtime->map_region(ctx, mapping);
+
+      // Skip if task failed.
+      if (f.get_result<bool>()) {
+        physical.wait_until_valid();
+
+        LegionRuntime::Accessor::RegionAccessor<LegionRuntime::Accessor::AccessorType::Generic> accessor =
+          physical.get_field_accessor(fid);
+        LegionRuntime::Arrays::Rect<1> rect = runtime->get_index_space_domain(
+          physical.get_logical_region().get_index_space()).get_rect<1>();
+        LegionRuntime::Arrays::Rect<1> subrect;
+        LegionRuntime::Accessor::ByteOffset stride;
+        void *base_ptr = accessor.raw_rect_ptr<1>(rect, subrect, &stride);
+        assert(base_ptr);
+        assert(subrect == rect);
+        assert(rect.lo == LegionRuntime::Arrays::Point<1>::ZEROES());
+        assert(stride.offset == 1);
+
+        Pds::Dgram *dghdr = (Pds::Dgram *)base_ptr;
+        if (dghdr->xtc.sizeofPayload()>MaxDgramSize)
+          MsgLog(logger, fatal, "Datagram size exceeds sanity check. Size: " << dghdr->xtc.sizeofPayload() << " Limit: " << MaxDgramSize);
+        Pds::Dgram* dg = (Pds::Dgram*)new char[sizeof(Pds::Dgram)+dghdr->xtc.sizeofPayload()];
+        memcpy(dg, base_ptr, sizeof(Pds::Dgram)+dghdr->xtc.sizeofPayload());
+      }
+    }
+
+    // Destroy temporary region.
+    runtime->destroy_logical_region(ctx, region);
+    runtime->destroy_index_space(ctx, ispace);
+    runtime->destroy_field_space(ctx, fspace);
+
+    return dg;
+  }
+
+  static const Legion::TaskID task_id = 501976; // chosen by fair dice roll
+  struct Args {
+    size_t filename_size;
+    int64_t offset;
+    Legion::FieldID fid;
+  };
+
+  Pds::Dgram* jump_blocking(const std::string& filename, int64_t offset) {
     int fd = ensure(filename);
     int64_t found = lseek64(fd,offset, SEEK_SET);
     if (found != offset) {
@@ -156,10 +311,30 @@ public:
     }
   }
 
+  Pds::Dgram* jump(const std::string& filename, int64_t offset, uintptr_t runtime_, uintptr_t ctx_) {
+#define RANDOM_ACCESS_USE_JUMP_TASK 1
+#if RANDOM_ACCESS_USE_JUMP_TASK
+    ::legion_runtime_t c_runtime = *(::legion_runtime_t *)runtime_;
+    ::legion_context_t c_ctx = *(::legion_context_t *)runtime_;
+    Legion::Runtime *runtime = Legion::CObjectWrapper::unwrap(c_runtime);
+    Legion::Context ctx = Legion::CObjectWrapper::unwrap(c_ctx)->context();
+    return launch_jump_task(runtime, ctx, filename, offset);
+#else
+    return jump_blocking(filename, offset);
+#endif
+  }
+
 private:
   enum {MaxDgramSize=0x2000000};
-  std::map<std::string, int> _fd;
+  static std::map<std::string, int> _fd;
+  static pthread_mutex_t _fd_mutex;
 };
+
+static Legion::TaskID __attribute__((unused)) _force_jump_task_static_initialize =
+  RandomAccessXtcReader::register_jump_task();
+
+std::map<std::string, int> RandomAccessXtcReader::_fd;
+pthread_mutex_t RandomAccessXtcReader::_fd_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // this is the implementation of the per-run indexing.  shouldn't be too
 // hard to make it work for for per-calibcycle indexing as well.
@@ -199,7 +374,7 @@ private:
 
     int64_t offset = 0;
     for (int i=0; i<2; i++) {
-      Pds::Dgram* dg = _xtc.jump(filename, offset);
+      Pds::Dgram* dg = _xtc.jump_blocking(filename, offset);
       if (dg->seq.service()==Pds::TransitionId::Configure) {
         _post(dg,filename);
         _beginrunOffset = dg->xtc.sizeofPayload()+sizeof(Pds::Dgram);
@@ -212,7 +387,7 @@ private:
 
   // send beginrun from the first file
   void _beginrun(const std::string &filename) {
-    Pds::Dgram* dg = _xtc.jump(filename, _beginrunOffset);
+    Pds::Dgram* dg = _xtc.jump_blocking(filename, _beginrunOffset);
     if (dg->seq.service()!=Pds::TransitionId::BeginRun)
       MsgLog(logger, fatal, "BeginRun transition not found after configure transition");
     _postOneDg(dg,filename);
@@ -234,7 +409,7 @@ public:
 
   // jump to an event
   // can't be a const method because it changes the "pieces" object
-  int jump(const std::vector<std::string>& filenames, const std::vector<int64_t> &offsets, const std::string &lastBeginCalibCycleDgram) {
+  int jump(const std::vector<std::string>& filenames, const std::vector<int64_t> &offsets, const std::string &lastBeginCalibCycleDgram, uintptr_t runtime, uintptr_t ctx) {
     _pieces.reset();
     if (_beginCalibCycleDgram != lastBeginCalibCycleDgram) {
       _beginCalibCycleDgram = lastBeginCalibCycleDgram;
@@ -255,7 +430,7 @@ public:
       int64_t offset = offsets[i];
 
       Pds::Dgram* dg=0;
-      dg = _xtc.jump(filename, offset);
+      dg = _xtc.jump(filename, offset, runtime, ctx);
       _add(dg, filename);
       accept = accept || dg->seq.service()==Pds::TransitionId::L1Accept;
     }
@@ -286,8 +461,8 @@ RandomAccess::~RandomAccess() {
   delete _rmap;
 }
 
-int RandomAccess::jump(const std::vector<std::string>& filenames, const std::vector<int64_t> &offsets, const std::string &lastBeginCalibCycleDgram) {
-  return _raxrun->jump(filenames, offsets, lastBeginCalibCycleDgram);
+int RandomAccess::jump(const std::vector<std::string>& filenames, const std::vector<int64_t> &offsets, const std::string &lastBeginCalibCycleDgram, uintptr_t runtime, uintptr_t ctx) {
+  return _raxrun->jump(filenames, offsets, lastBeginCalibCycleDgram, runtime, ctx);
 }
 
 void RandomAccess::setrun(int run) {
