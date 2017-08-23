@@ -26,4 +26,10 @@ Import('*')
 # PYEXTMOD - name of the Python extension module, package name used by default
 #
 #
-standardSConscript(DOCGEN="doxy-all psana-doxy")
+
+import os
+psana_legion_dir = "/reg/neh/home/eslaught/psana-legion/psana_legion"
+legion_runtime_dir = "/reg/neh/home/eslaught/legion/runtime"
+legion_header_dirs = ["", "legion", "mappers", "realm"]
+extra_ccflags = " ".join(["-I%s" % os.path.join(legion_runtime_dir, d) for d in legion_header_dirs])
+standardSConscript(DOCGEN="doxy-all psana-doxy", LIBS="-lpsana_legion", LIBPATH=psana_legion_dir, CCFLAGS=extra_ccflags)
