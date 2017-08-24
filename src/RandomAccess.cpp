@@ -127,14 +127,14 @@ public:
   }
 
   static int ensure(const std::string& filename) {
-    if (!pthread_mutex_lock(&_fd_mutex)) {
+    if (pthread_mutex_lock(&_fd_mutex)) {
       assert(false && "pthread_mutex_lock failed\n");
     }
 
     if (has(filename)) {
       int result = _fd[filename];
 
-      if (!pthread_mutex_unlock(&_fd_mutex)) {
+      if (pthread_mutex_unlock(&_fd_mutex)) {
         assert(false && "pthread_mutex_unlock failed\n");
       }
 
@@ -146,7 +146,7 @@ public:
                                "File " << filename.c_str() << " not found");
     _fd[filename] = fd;
 
-    if (!pthread_mutex_unlock(&_fd_mutex)) {
+    if (pthread_mutex_unlock(&_fd_mutex)) {
       assert(false && "pthread_mutex_unlock failed\n");
     }
 
