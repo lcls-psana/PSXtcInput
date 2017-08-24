@@ -269,7 +269,7 @@ public:
         Pds::Dgram *dghdr = (Pds::Dgram *)base_ptr;
         if (dghdr->xtc.sizeofPayload()>MaxDgramSize)
           MsgLog(logger, fatal, "Datagram size exceeds sanity check. Size: " << dghdr->xtc.sizeofPayload() << " Limit: " << MaxDgramSize);
-        Pds::Dgram* dg = (Pds::Dgram*)new char[sizeof(Pds::Dgram)+dghdr->xtc.sizeofPayload()];
+        dg = (Pds::Dgram*)new char[sizeof(Pds::Dgram)+dghdr->xtc.sizeofPayload()];
         memcpy(dg, base_ptr, sizeof(Pds::Dgram)+dghdr->xtc.sizeofPayload());
       }
     }
@@ -315,7 +315,7 @@ public:
 #define RANDOM_ACCESS_USE_JUMP_TASK 1
 #if RANDOM_ACCESS_USE_JUMP_TASK
     ::legion_runtime_t c_runtime = *(::legion_runtime_t *)runtime_;
-    ::legion_context_t c_ctx = *(::legion_context_t *)runtime_;
+    ::legion_context_t c_ctx = *(::legion_context_t *)ctx_;
     Legion::Runtime *runtime = Legion::CObjectWrapper::unwrap(c_runtime);
     Legion::Context ctx = Legion::CObjectWrapper::unwrap(c_ctx)->context();
     return launch_jump_task(runtime, ctx, filename, offset);
