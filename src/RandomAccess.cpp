@@ -176,26 +176,53 @@ public:
             Legion::Context ctx, Legion::HighLevelRuntime *runtime) {
     // Unpack arguments.
     assert(task->arglen >= sizeof(Args));
-    const Args &args = *(const Args *)task->args;
-    const char *filename_start = (const char *)(((const char *)task->args) + sizeof(Args));
-    std::string filename(filename_start, args.filename_size);
-    int64_t offset = args.offset;
+    size_t count;
+    std::vector<int64_t> offsets;
+    std::vector<std::string> filenames;
+    {
+      const char *current = (const char *)task->args;
+
+      size_t total_bytes = *(size_t *)current; current += sizeof(size_t);
+      count = *(size_t *)current; current += sizeof(size_t);
+
+      for (size_t i = 0; i < count; i++) {
+        offsets.push_back(*(int64_t *)current); current += sizeof(int64_t);
+      }
+
+      std::vector<size_t> filename_sizes;
+      for (size_t i = 0; i < count; i++) {
+        filename_sizes.push_back(*(size_t *)current); current += sizeof(size_t);
+      }
+
+      for (size_t i = 0; i < count; i++) {
+        filenames.push_back(std::string(current, filename_sizes[i]));
+        current += filename_sizes[i];
+      }
+
+      assert(current == ((const char *)task->args) + total_bytes);
+    }
 
     // Fetch destination pointer out of region argument.
-    LegionRuntime::Accessor::RegionAccessor<LegionRuntime::Accessor::AccessorType::Generic> accessor =
-      regions[0].get_field_accessor(args.fid);
     LegionRuntime::Arrays::Rect<1> rect = runtime->get_index_space_domain(
       regions[0].get_logical_region().get_index_space()).get_rect<1>();
     LegionRuntime::Arrays::Rect<1> subrect;
     LegionRuntime::Accessor::ByteOffset stride;
-    void *base_ptr = accessor.raw_rect_ptr<1>(rect, subrect, &stride);
-    assert(base_ptr);
-    assert(subrect == rect);
-    assert(rect.lo == LegionRuntime::Arrays::Point<1>::ZEROES());
-    assert(stride.offset == 1);
 
-    // Call base jump.
-    return jump_internal(filename, offset, (Pds::Dgram *)base_ptr);
+    bool ok = true;
+    for (size_t i = 0; i < count; i++) {
+      LegionRuntime::Accessor::RegionAccessor<LegionRuntime::Accessor::AccessorType::Generic> accessor =
+        regions[0].get_field_accessor(fid_base+i);
+      void *base_ptr = accessor.raw_rect_ptr<1>(rect, subrect, &stride);
+      assert(base_ptr);
+      assert(subrect == rect);
+      assert(rect.lo == LegionRuntime::Arrays::Point<1>::ZEROES());
+      assert(stride.offset == 1);
+
+      // Call base jump.
+      // FIXME: Maybe not the right error behavior
+      ok = ok && jump_internal(filenames[i], offsets[i], (Pds::Dgram *)base_ptr);
+    }
+    return ok;
   }
 
   static Legion::TaskID register_jump_task() {
@@ -206,71 +233,108 @@ public:
     return task_id;
   }
 
-  static Pds::Dgram *launch_jump_task(Legion::HighLevelRuntime *runtime,
-                                      Legion::Context ctx,
-                                      const std::string &filename,
-                                      int64_t offset) {
+  static std::vector<Pds::Dgram *> launch_jump_task(Legion::HighLevelRuntime *runtime,
+                                                    Legion::Context ctx,
+                                                    const std::vector<std::string> &filenames,
+                                                    const std::vector<int64_t> &offsets) {
+    size_t count = filenames.size();
+
     // Create destination region.
     Legion::Domain domain = Legion::Domain::from_rect<1>(
       LegionRuntime::Arrays::Rect<1>(LegionRuntime::Arrays::Point<1>(0), LegionRuntime::Arrays::Point<1>(MaxDgramSize-1)));
     Legion::IndexSpace ispace = runtime->create_index_space(ctx, domain);
     Legion::FieldSpace fspace = runtime->create_field_space(ctx);
-    Legion::FieldID fid = 101;
     {
       Legion::FieldAllocator fsa(runtime->create_field_allocator(ctx, fspace));
-      fsa.allocate_field(1, fid);
+      for (size_t i = 0; i < count; i++) {
+        fsa.allocate_field(1, fid_base+i);
+      }
     }
     Legion::LogicalRegion region = runtime->create_logical_region(ctx, ispace, fspace);
 
     // Launch task.
     Legion::Future f;
     {
+      size_t total_filenames_size = 0;
+      for (size_t i = 0; i < count; i++) {
+        total_filenames_size = filenames[i].size();
+      }
+
+      size_t bufsize = sizeof(Args) + count*sizeof(int64_t) + count*sizeof(size_t) + total_filenames_size;
       Args args;
-      args.filename_size = filename.size();
-      args.offset = offset;
-      args.fid = fid;
-      size_t bufsize = sizeof(Args) + filename.size();
-      char *buffer = (char *)malloc(bufsize);
-      *(Args *)buffer = args;
-      memcpy(buffer + sizeof(Args), filename.c_str(), filename.size());
+      args.total_bytes = bufsize;
+      args.count = count;
+      char *buffer = new char[bufsize];
+      {
+        char *current = buffer;
+
+        *(Args *)current = args; current += sizeof(Args);
+
+        for (size_t i = 0; i < count; i++) {
+          *(int64_t *)current = offsets[i]; current += sizeof(int64_t);
+        }
+
+        for (size_t i = 0; i < count; i++) {
+          *(size_t *)current = filenames[i].size(); current += sizeof(size_t);
+        }
+
+        for (size_t i = 0; i < count; i++) {
+          memcpy(current, filenames[i].c_str(), filenames[i].size());
+          current += filenames[i].size();
+        }
+
+        assert(current == buffer + bufsize);
+      }
       Legion::TaskArgument targs(buffer, bufsize);
 
       Legion::TaskLauncher task(task_id, targs);
       task.add_region_requirement(
-        Legion::RegionRequirement(region, READ_WRITE, EXCLUSIVE, region).add_field(fid));
+        Legion::RegionRequirement(region, READ_WRITE, EXCLUSIVE, region));
+      for (size_t i = 0; i < count; i++) {
+        task.add_field(0, fid_base+i);
+      }
       f = runtime->execute_task(ctx, task);
-      free(buffer);
+      delete[] buffer;
     }
 
     // Map destination region.
-    Pds::Dgram *dg = 0;
+    std::vector<Pds::Dgram *> dgs;
     {
       // Launch mapping first to avoid blocking analysis on task execution.
       Legion::InlineLauncher mapping(
-        Legion::RegionRequirement(region, READ_WRITE, EXCLUSIVE, region).add_field(fid));
+        Legion::RegionRequirement(region, READ_WRITE, EXCLUSIVE, region));
+      for (size_t i = 0; i < count; i++) {
+        mapping.add_field(fid_base);
+      }
       Legion::PhysicalRegion physical = runtime->map_region(ctx, mapping);
 
       // Skip if task failed.
       if (f.get_result<bool>()) {
         physical.wait_until_valid();
 
-        LegionRuntime::Accessor::RegionAccessor<LegionRuntime::Accessor::AccessorType::Generic> accessor =
-          physical.get_field_accessor(fid);
         LegionRuntime::Arrays::Rect<1> rect = runtime->get_index_space_domain(
           physical.get_logical_region().get_index_space()).get_rect<1>();
         LegionRuntime::Arrays::Rect<1> subrect;
         LegionRuntime::Accessor::ByteOffset stride;
-        void *base_ptr = accessor.raw_rect_ptr<1>(rect, subrect, &stride);
-        assert(base_ptr);
-        assert(subrect == rect);
-        assert(rect.lo == LegionRuntime::Arrays::Point<1>::ZEROES());
-        assert(stride.offset == 1);
+        std::vector<void *> base_ptr;
+        for (size_t i = 0; i < count; i++) {
+          LegionRuntime::Accessor::RegionAccessor<LegionRuntime::Accessor::AccessorType::Generic> accessor =
+            physical.get_field_accessor(fid_base+i);
 
-        Pds::Dgram *dghdr = (Pds::Dgram *)base_ptr;
-        if (dghdr->xtc.sizeofPayload()>MaxDgramSize)
-          MsgLog(logger, fatal, "Datagram size exceeds sanity check. Size: " << dghdr->xtc.sizeofPayload() << " Limit: " << MaxDgramSize);
-        dg = (Pds::Dgram*)new char[sizeof(Pds::Dgram)+dghdr->xtc.sizeofPayload()];
-        memcpy(dg, base_ptr, sizeof(Pds::Dgram)+dghdr->xtc.sizeofPayload());
+          void * base_ptr = accessor.raw_rect_ptr<1>(rect, subrect, &stride);
+          assert(base_ptr);
+          assert(subrect == rect);
+          assert(rect.lo == LegionRuntime::Arrays::Point<1>::ZEROES());
+          assert(stride.offset == 1);
+
+
+          Pds::Dgram *dghdr = (Pds::Dgram *)base_ptr;
+          if (dghdr->xtc.sizeofPayload()>MaxDgramSize)
+            MsgLog(logger, fatal, "Datagram size exceeds sanity check. Size: " << dghdr->xtc.sizeofPayload() << " Limit: " << MaxDgramSize);
+          Pds::Dgram *dg = (Pds::Dgram*)new char[sizeof(Pds::Dgram)+dghdr->xtc.sizeofPayload()];
+          memcpy(dg, base_ptr, sizeof(Pds::Dgram)+dghdr->xtc.sizeofPayload());
+          dgs.push_back(dg);
+        }
       }
     }
 
@@ -279,14 +343,17 @@ public:
     runtime->destroy_index_space(ctx, ispace);
     runtime->destroy_field_space(ctx, fspace);
 
-    return dg;
+    return dgs;
   }
 
   static const Legion::TaskID task_id = 501976; // chosen by fair dice roll
+  static const Legion::FieldID fid_base = 100;
   struct Args {
-    size_t filename_size;
-    int64_t offset;
-    Legion::FieldID fid;
+    size_t total_bytes;
+    size_t count;
+    // std::vector<int64_t> offsets;
+    // std::vector<size_t> filename_sizes;
+    // std::vector<std::string content> filenames;
   };
 
   Pds::Dgram* jump_blocking(const std::string& filename, int64_t offset) {
@@ -311,16 +378,22 @@ public:
     }
   }
 
-  Pds::Dgram* jump(const std::string& filename, int64_t offset, uintptr_t runtime_, uintptr_t ctx_) {
+  std::vector<Pds::Dgram *> jump_async(const std::vector<std::string> &filenames, const std::vector<int64_t> &offsets, uintptr_t runtime_, uintptr_t ctx_) {
 #define RANDOM_ACCESS_USE_JUMP_TASK 1
 #if RANDOM_ACCESS_USE_JUMP_TASK
     ::legion_runtime_t c_runtime = *(::legion_runtime_t *)runtime_;
     ::legion_context_t c_ctx = *(::legion_context_t *)ctx_;
     Legion::Runtime *runtime = Legion::CObjectWrapper::unwrap(c_runtime);
     Legion::Context ctx = Legion::CObjectWrapper::unwrap(c_ctx)->context();
-    return launch_jump_task(runtime, ctx, filename, offset);
+    return launch_jump_task(runtime, ctx, filenames, offsets);
 #else
-    return jump_blocking(filename, offset);
+    std::vector<Pds::Dgram *> dgs;
+    for (size_t i = 0; i < filenames.size(); i++) {
+      const std::string &filename = filenames[i];
+      int64_t offset = offsets[i];
+      dgs.push_back(jump_blocking(filename, offset));
+    }
+    return dgs;
 #endif
   }
 
@@ -425,12 +498,10 @@ public:
 
     bool accept = false;
     assert(filenames.size() == offsets.size());
-    for (size_t i = 0; i < filenames.size(); i++) {
-      const std::string &filename = filenames[i];
-      int64_t offset = offsets[i];
-
-      Pds::Dgram* dg=0;
-      dg = _xtc.jump(filename, offset, runtime, ctx);
+    std::vector<Pds::Dgram*> dgs = _xtc.jump_async(filenames, offsets, runtime, ctx);
+    for (size_t i = 0; i < dgs.size(); i++) {
+      const std::string& filename = filenames[i];
+      Pds::Dgram* dg = dgs[i];
       _add(dg, filename);
       accept = accept || dg->seq.service()==Pds::TransitionId::L1Accept;
     }
