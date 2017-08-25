@@ -259,7 +259,7 @@ XtcInputModuleBase::beginJob(Event& evt, Env& env)
     m_transitions[firstDg.dg()->seq.service()] = firstDg.dg()->seq.clock();
 
     fillEventDgList(eventDg, evt);
-    fillEventId(firstDg, evt);
+    fillEventId(firstDg, evt, env);
     fillEventOffset(eventDg, evt);
 
     boost::shared_ptr<PSEvt::DamageMap> damageMap = boost::make_shared<PSEvt::DamageMap>();
@@ -284,7 +284,7 @@ XtcInputModuleBase::event(Event& evt, Env& env)
     // fake EndRun, prepare to stop on next call
     MsgLog(name(), debug, name() << ": simulated EOR");
     if (m_putBack.size()) {
-      fillEventId(m_putBack[0], evt);
+      fillEventId(m_putBack[0], evt, env);
       fillEventOffset(m_putBack, evt);
       fillEventDgList(m_putBack, evt);
     }
@@ -374,7 +374,7 @@ XtcInputModuleBase::event(Event& evt, Env& env)
       }
       // signal new run, content is not relevant
       if (not (clock == m_transitions[trans])) {
-        fillEventId(eventDg.front(), evt);
+        fillEventId(eventDg.front(), evt, env);
         fillEventOffset(eventDg, evt);
         fillEventDgList(eventDg, evt);
         status = BeginRun;
@@ -386,7 +386,7 @@ XtcInputModuleBase::event(Event& evt, Env& env)
     case Pds::TransitionId::EndRun:
       // signal end of run, content is not relevant
       if (not (clock == m_transitions[trans])) {
-        fillEventId(eventDg.front(), evt);
+        fillEventId(eventDg.front(), evt, env);
         fillEventOffset(eventDg, evt);
         fillEventDgList(eventDg, evt);
         // reset run number, so that if next BeginRun is missing we don't reuse this run
@@ -401,7 +401,7 @@ XtcInputModuleBase::event(Event& evt, Env& env)
       // copy config data and signal new calib cycle
       if (not (clock == m_transitions[trans])) {
         fillEnv(eventDg, env);
-        fillEventId(eventDg.front(), evt);
+        fillEventId(eventDg.front(), evt, env);
         fillEventOffset(eventDg, evt);
         fillEventDgList(eventDg, evt);
         status = BeginCalibCycle;
@@ -413,7 +413,7 @@ XtcInputModuleBase::event(Event& evt, Env& env)
     case Pds::TransitionId::EndCalibCycle:
       // stop calib cycle
       if (not (clock == m_transitions[trans])) {
-        fillEventId(eventDg.front(), evt);
+        fillEventId(eventDg.front(), evt, env);
         fillEventOffset(eventDg, evt);
         fillEventDgList(eventDg, evt);
         status = EndCalibCycle;
@@ -441,7 +441,7 @@ XtcInputModuleBase::event(Event& evt, Env& env)
 
         // reached event limit, will go in simulated end-of-run
         MsgLog(name(), debug, name() << ": event limit reached, simulated EndCalibCycle");
-        fillEventId(eventDg.front(), evt);
+        fillEventId(eventDg.front(), evt, env);
         fillEventOffset(eventDg, evt);
         fillEventDgList(eventDg, evt);
         found = true;
@@ -466,7 +466,7 @@ XtcInputModuleBase::event(Event& evt, Env& env)
         evt.put(damageMap);
         fillEnv(eventDg, env);
         fillEvent(eventDg, evt, env);
-        fillEventId(eventDg.front(), evt);
+        fillEventId(eventDg.front(), evt, env);
         fillEventOffset(eventDg, evt);
         fillEventDgList(eventDg, evt);
         found = true;
@@ -600,7 +600,7 @@ XtcInputModuleBase::fillEvent(const XtcInput::Dgram& dg, Event& evt, Env& env)
 }
 
 void
-XtcInputModuleBase::fillEventId(const XtcInput::Dgram& dg, Event& evt)
+XtcInputModuleBase::fillEventId(const XtcInput::Dgram& dg, Event& evt, Env& env)
 {
   MsgLog(name(), debug, name() << ": in fillEventId()");
 
@@ -617,6 +617,8 @@ XtcInputModuleBase::fillEventId(const XtcInput::Dgram& dg, Event& evt)
   unsigned vect = seq.stamp().vector();
   unsigned control = seq.stamp().control();
   boost::shared_ptr<PSEvt::EventId> eventId = boost::make_shared<XtcEventId>(run, evtTime, fiducials, ticks, vect, control);
+  // so we can look up global-calib-dir constants without having an event
+  env.configStore().put(eventId);
   evt.put(eventId);
 }
 

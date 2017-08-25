@@ -99,7 +99,7 @@ protected:
   void fillEvent(const XtcInput::Dgram& dg, Event& evt, Env& env);
   
   /// Fill event with EventId information
-  void fillEventId(const XtcInput::Dgram& dg, Event& evt);
+  void fillEventId(const XtcInput::Dgram& dg, Event& evt, Env& env);
 
   /// Fill event with EventOffset information
   void fillEventOffset(const std::vector<XtcInput::Dgram>& dgList, Event& evt);
