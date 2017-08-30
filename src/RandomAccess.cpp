@@ -216,7 +216,6 @@ private:
     if (dg->seq.service()!=Pds::TransitionId::BeginRun)
       MsgLog(logger, fatal, "BeginRun transition not found after configure transition");
     _postOneDg(dg,filename);
-    _beginCalibOffset = _beginrunOffset+dg->xtc.sizeofPayload()+sizeof(Pds::Dgram);
   }
 
 public:
@@ -235,7 +234,18 @@ public:
 
   // jump to an event
   // can't be a const method because it changes the "pieces" object
-  int jump(const std::vector<std::string>& filenames, const std::vector<int64_t> &offsets) {
+  int jump(const std::vector<std::string>& filenames, const std::vector<int64_t> &offsets, const std::string &lastBeginCalibCycleDgram) {
+    _pieces.reset();
+    if (_beginCalibCycleDgram != lastBeginCalibCycleDgram) {
+      _beginCalibCycleDgram = lastBeginCalibCycleDgram;
+
+      const Pds::Dgram* dghdr = (const Pds::Dgram*)lastBeginCalibCycleDgram.c_str();
+      Pds::Dgram* dg = (Pds::Dgram*)new char[sizeof(*dghdr)+dghdr->xtc.sizeofPayload()];
+      memcpy(dg, dghdr, sizeof(*dghdr)+dghdr->xtc.sizeofPayload());
+      _add(dg, "");
+      _post();
+    }
+
     _pieces.reset();
 
     bool accept = false;
@@ -257,7 +267,7 @@ public:
 private:
   RandomAccessXtcReader    _xtc;
   int64_t                  _beginrunOffset;
-  int64_t                  _beginCalibOffset;
+  std::string              _beginCalibCycleDgram;
   DgramPieces              _pieces;
   queue<DgramPieces>&      _queue;
 };
@@ -276,8 +286,8 @@ RandomAccess::~RandomAccess() {
   delete _rmap;
 }
 
-int RandomAccess::jump(const std::vector<std::string>& filenames, const std::vector<int64_t> &offsets) {
-  return _raxrun->jump(filenames, offsets);
+int RandomAccess::jump(const std::vector<std::string>& filenames, const std::vector<int64_t> &offsets, const std::string &lastBeginCalibCycleDgram) {
+  return _raxrun->jump(filenames, offsets, lastBeginCalibCycleDgram);
 }
 
 void RandomAccess::setrun(int run) {

@@ -31,7 +31,7 @@ class RandomAccess : public psana::RandomAccess, public psana::Configurable {
 public:
   RandomAccess(const std::string& name, std::queue<DgramPieces>& queue);
   ~RandomAccess();
-  int jump(const std::vector<std::string>& filenames, const std::vector<int64_t> &offsets);
+  int jump(const std::vector<std::string>& filenames, const std::vector<int64_t> &offsets, const std::string &lastBeginCalibCycleDgram);
   void setrun(int run);
   const std::vector<unsigned>& runs();
 private:
