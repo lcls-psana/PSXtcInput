@@ -52,20 +52,14 @@ public:
   // Default constructor
   XtcEventOffset (const std::vector<std::string> &filenames,
                   const std::vector<int64_t> &offsets,
-                  int64_t configureOffset,
-                  int64_t beginRunOffset,
-                  const std::string &lastBeginCalibCycleFilename,
-                  int64_t lastBeginCalibCycleOffset) ;
+                  const std::string &lastBeginCalibCycleDgram) ;
 
   // Destructor
   ~XtcEventOffset () ;
 
   virtual std::vector<std::string> filenames() const;
   virtual std::vector<int64_t> offsets() const;
-  virtual int64_t configureOffset() const;
-  virtual int64_t beginRunOffset() const;
-  virtual std::string lastBeginCalibCycleFilename() const;
-  virtual int64_t lastBeginCalibCycleOffset() const;
+  virtual std::string lastBeginCalibCycleDgram() const;
 
   /// Dump object in human-readable format
   virtual void print(std::ostream& os) const;
@@ -77,10 +71,7 @@ private:
   // Data members
   std::vector<std::string> m_filenames;
   std::vector<int64_t> m_offsets;
-  int64_t m_configureOffset;
-  int64_t m_beginRunOffset;
-  std::string m_lastBeginCalibCycleFilename;
-  int64_t m_lastBeginCalibCycleOffset;
+  std::string m_lastBeginCalibCycleDgram;
 };
 
 } // namespace PSXtcInput

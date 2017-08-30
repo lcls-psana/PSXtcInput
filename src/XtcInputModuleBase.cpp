@@ -138,10 +138,6 @@ XtcInputModuleBase::XtcInputModuleBase (const std::string& name,
   , m_simulateEOR(0)
   , m_run(-1)
   , m_liveMode(false)
-  , m_configureOffset(-1LL)
-  , m_beginRunOffset(-1LL)
-  , m_lastBeginCalibCycleOffset(-1LL)
-  , m_lastOffset(0)
 {
   std::fill_n(m_transitions, int(Pds::TransitionId::NumberOf), Pds::ClockTime(0, 0));
 
@@ -644,28 +640,19 @@ XtcInputModuleBase::fillEventOffset(const std::vector<XtcInput::Dgram>& dgList, 
 
     if (i == 0) {
       switch(dgptr->seq.service()) {
-      case Pds::TransitionId::Configure:
-        m_configureOffset = m_lastOffset;
-        break;
-      case Pds::TransitionId::BeginRun:
-        m_beginRunOffset = m_lastOffset;
-        break;
       case Pds::TransitionId::BeginCalibCycle:
-        m_lastBeginCalibCycleOffset = m_lastOffset;
-        m_lastBeginCalibCycleFilename = dg.file().path();
-        break;
-      case Pds::TransitionId::L1Accept:
-        // This is an event, no transition needed.
-        break;
+        {
+          Pds::Dgram *dghdr = &*dgptr;
+          m_lastBeginCalibCycleDgram = std::string((char *)dghdr, sizeof(*dghdr) + dghdr->xtc.sizeofPayload());
+          break;
+        }
       default:
         break;
       }
-
-      m_lastOffset += dgptr->xtc.sizeofPayload()+sizeof(Pds::Dgram);
     }
   }
 
-  boost::shared_ptr<PSEvt::EventOffset> eventOffset = boost::make_shared<XtcEventOffset>(filenames, offsets, m_configureOffset, m_beginRunOffset, m_lastBeginCalibCycleFilename, m_lastBeginCalibCycleOffset);
+  boost::shared_ptr<PSEvt::EventOffset> eventOffset = boost::make_shared<XtcEventOffset>(filenames, offsets, m_lastBeginCalibCycleDgram);
   evt.put(eventOffset);
 }
 

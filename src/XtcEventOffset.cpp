@@ -38,17 +38,11 @@ namespace PSXtcInput {
 //----------------
 XtcEventOffset::XtcEventOffset (const std::vector<std::string> &filenames,
                                 const std::vector<int64_t> &offsets,
-                                int64_t configureOffset,
-                                int64_t beginRunOffset,
-                                const std::string &lastBeginCalibCycleFilename,
-                                int64_t lastBeginCalibCycleOffset)
+                                const std::string &lastBeginCalibCycleDgram)
   : PSEvt::EventOffset()
   , m_filenames(filenames)
   , m_offsets(offsets)
-  , m_configureOffset(configureOffset)
-  , m_beginRunOffset(beginRunOffset)
-  , m_lastBeginCalibCycleFilename(lastBeginCalibCycleFilename)
-  , m_lastBeginCalibCycleOffset(lastBeginCalibCycleOffset)
+  , m_lastBeginCalibCycleDgram(lastBeginCalibCycleDgram)
 {
 }
 
@@ -71,28 +65,10 @@ XtcEventOffset::offsets() const
   return m_offsets;
 }
 
-int64_t
-XtcEventOffset::configureOffset() const
-{
-  return m_configureOffset;
-}
-
-int64_t
-XtcEventOffset::beginRunOffset() const
-{
-  return m_beginRunOffset;
-}
-
 std::string
-XtcEventOffset::lastBeginCalibCycleFilename() const
+XtcEventOffset::lastBeginCalibCycleDgram() const
 {
-  return m_lastBeginCalibCycleFilename;
-}
-
-int64_t
-XtcEventOffset::lastBeginCalibCycleOffset() const
-{
-  return m_lastBeginCalibCycleOffset;
+  return m_lastBeginCalibCycleDgram;
 }
 
 /// Dump object in human-readable format
