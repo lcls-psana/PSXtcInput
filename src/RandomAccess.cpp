@@ -483,7 +483,12 @@ public:
   // jump to an event
   // can't be a const method because it changes the "pieces" object
   int jump(const std::vector<std::string>& filenames, const std::vector<int64_t> &offsets, const std::string &lastBeginCalibCycleDgram, uintptr_t runtime, uintptr_t ctx) {
+    bool accept = false;
+    assert(filenames.size() == offsets.size());
+    std::vector<Pds::Dgram*> dgs = _xtc.jump_async(filenames, offsets, runtime, ctx);
+
     _pieces.reset();
+
     if (_beginCalibCycleDgram != lastBeginCalibCycleDgram) {
       _beginCalibCycleDgram = lastBeginCalibCycleDgram;
 
@@ -496,9 +501,6 @@ public:
 
     _pieces.reset();
 
-    bool accept = false;
-    assert(filenames.size() == offsets.size());
-    std::vector<Pds::Dgram*> dgs = _xtc.jump_async(filenames, offsets, runtime, ctx);
     for (size_t i = 0; i < dgs.size(); i++) {
       const std::string& filename = filenames[i];
       Pds::Dgram* dg = dgs[i];
