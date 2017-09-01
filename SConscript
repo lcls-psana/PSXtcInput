@@ -32,5 +32,5 @@ psana_legion_dir = os.environ["PSANA_LEGION_DIR"]
 legion_runtime_dir = os.environ["LG_RT_DIR"]
 legion_header_dirs = ["", "legion", "mappers", "realm"]
 extra_ccflags = " ".join(["-I%s" % os.path.join(legion_runtime_dir, d) for d in legion_header_dirs])
-extra_ccflags += " -fabi-version=2"
+extra_ccflags += " -std=c++98 -fabi-version=2"
 standardSConscript(DOCGEN="doxy-all psana-doxy", LIBS="-lpsana_legion", LIBPATH=psana_legion_dir, CCFLAGS=extra_ccflags)
