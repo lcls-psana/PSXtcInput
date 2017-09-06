@@ -257,7 +257,7 @@ public:
     {
       size_t total_filenames_size = 0;
       for (size_t i = 0; i < count; i++) {
-        total_filenames_size = filenames[i].size();
+        total_filenames_size += filenames[i].size();
       }
 
       size_t bufsize = sizeof(Args) + count*sizeof(int64_t) + count*sizeof(size_t) + total_filenames_size;
@@ -304,7 +304,7 @@ public:
       Legion::InlineLauncher mapping(
         Legion::RegionRequirement(region, READ_WRITE, EXCLUSIVE, region));
       for (size_t i = 0; i < count; i++) {
-        mapping.add_field(fid_base);
+        mapping.add_field(fid_base+i);
       }
       Legion::PhysicalRegion physical = runtime->map_region(ctx, mapping);
 
