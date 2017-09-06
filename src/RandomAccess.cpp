@@ -28,11 +28,15 @@
 #include <stdlib.h>
 #include <sstream>
 
+#ifdef PSANA_USE_LEGION
+
 #include <pthread.h>
 #include <legion.h>
 #include <legion_c.h>
 #include <legion_c_util.h>
 #include <unistd.h>
+
+#endif
 
 //-------------------------------
 // Collaborating Class Headers --
@@ -127,16 +131,20 @@ public:
   }
 
   static int ensure(const std::string& filename) {
+#ifdef PSANA_USE_LEGION
     if (pthread_mutex_lock(&_fd_mutex)) {
       assert(false && "pthread_mutex_lock failed\n");
     }
+#endif
 
     if (has(filename)) {
       int result = _fd[filename];
 
+#ifdef PSANA_USE_LEGION
       if (pthread_mutex_unlock(&_fd_mutex)) {
         assert(false && "pthread_mutex_unlock failed\n");
       }
+#endif
 
       return result;
     }
@@ -146,9 +154,11 @@ public:
                                "File " << filename.c_str() << " not found");
     _fd[filename] = fd;
 
+#ifdef PSANA_USE_LEGION
     if (pthread_mutex_unlock(&_fd_mutex)) {
       assert(false && "pthread_mutex_unlock failed\n");
     }
+#endif
 
     return fd;
   }
@@ -159,6 +169,7 @@ public:
     //   ::close(it->second);
   }
 
+#ifdef PSANA_USE_LEGION
   static bool jump_internal(const std::string& filename, int64_t offset, Pds::Dgram* dg) {
     int fd = ensure(filename);
     if (::pread(fd, dg, sizeof(Pds::Dgram), offset)==0) {
@@ -355,6 +366,7 @@ public:
     // std::vector<size_t> filename_sizes;
     // std::vector<std::string content> filenames;
   };
+#endif
 
   Pds::Dgram* jump_blocking(const std::string& filename, int64_t offset) {
     int fd = ensure(filename);
@@ -379,8 +391,7 @@ public:
   }
 
   std::vector<Pds::Dgram *> jump_async(const std::vector<std::string> &filenames, const std::vector<int64_t> &offsets, uintptr_t runtime_, uintptr_t ctx_) {
-#define RANDOM_ACCESS_USE_JUMP_TASK 1
-#if RANDOM_ACCESS_USE_JUMP_TASK
+#ifdef PSANA_USE_LEGION
     ::legion_runtime_t c_runtime = *(::legion_runtime_t *)runtime_;
     ::legion_context_t c_ctx = *(::legion_context_t *)ctx_;
     Legion::Runtime *runtime = Legion::CObjectWrapper::unwrap(c_runtime);
@@ -400,14 +411,20 @@ public:
 private:
   enum {MaxDgramSize=0x2000000};
   static std::map<std::string, int> _fd;
+#ifdef PSANA_USE_LEGION
   static pthread_mutex_t _fd_mutex;
+#endif
 };
 
+#ifdef PSANA_USE_LEGION
 static Legion::TaskID __attribute__((unused)) _force_jump_task_static_initialize =
   RandomAccessXtcReader::register_jump_task();
+#endif
 
 std::map<std::string, int> RandomAccessXtcReader::_fd;
+#ifdef PSANA_USE_LEGION
 pthread_mutex_t RandomAccessXtcReader::_fd_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
 // this is the implementation of the per-run indexing.  shouldn't be too
 // hard to make it work for for per-calibcycle indexing as well.
