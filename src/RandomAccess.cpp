@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <sstream>
+#include <time.h>
 
 #ifdef PSANA_USE_LEGION
 
@@ -368,9 +369,43 @@ public:
   };
 #endif
 
+  // retry with sleep to support live mode
+  off64_t lseek64_retry(int fd, off64_t offset, int whence) {
+    timespec req,rem;
+    req.tv_sec = 1; req.tv_nsec = 0;
+    int64_t found;
+    for (int i=0; i<3; i++) {
+      found = lseek64(fd,offset, SEEK_SET);
+      if (found!=-1) return found;
+      nanosleep(&req, &rem); // wait for the live-mode data
+    }
+    return found;
+  };
+
+  // retry with sleep to support live mode
+  // interface tries to behave (somewhat) like ::read
+  ssize_t read_retry(int fd, char* buf, size_t count) {
+    timespec req,rem;
+    req.tv_sec = 1; req.tv_nsec = 0;
+    ssize_t bytes_read, remaining;
+    remaining = count;
+    for (int i=0; i<3; i++) {
+      bytes_read = ::read(fd, buf, remaining);
+      if (bytes_read<0) return -1; // abject failure
+      remaining -= bytes_read;
+      if (remaining==0) {
+        return count;    // success
+      } else {
+        buf+=bytes_read; // partial success
+      }
+      nanosleep(&req, &rem); // wait for the live-mode data
+    }
+    return -1; // even more failure
+  };
+
   Pds::Dgram* jump_blocking(const std::string& filename, int64_t offset) {
     int fd = ensure(filename);
-    int64_t found = lseek64(fd,offset, SEEK_SET);
+    int64_t found = lseek64_retry(fd,offset, SEEK_SET);
     if (found != offset) {
       stringstream ss;
       ss << "Jump to offset " << offset << " failed";
@@ -378,14 +413,16 @@ public:
       throw RandomAccessSeekFailed(ERR_LOC);
     }
     Pds::Dgram dghdr;
-    if (::read(fd, &dghdr, sizeof(dghdr))==0) {
+    if (read_retry(fd, (char*)&dghdr, sizeof(dghdr))<0) {
       return 0;
     } else {
       if (dghdr.xtc.sizeofPayload()>MaxDgramSize)
         MsgLog(logger, fatal, "Datagram size exceeds sanity check. Size: " << dghdr.xtc.sizeofPayload() << " Limit: " << MaxDgramSize);
       Pds::Dgram* dg = (Pds::Dgram*)new char[sizeof(dghdr)+dghdr.xtc.sizeofPayload()];
       *dg = dghdr;
-      ::read(fd, dg->xtc.payload(), dg->xtc.sizeofPayload());
+      if (read_retry(fd, dg->xtc.payload(), dg->xtc.sizeofPayload())<0) {
+        return 0;
+      }
       return dg;
     }
   }
