@@ -150,7 +150,7 @@ private:
   int m_run;                                          ///< Run number that comes from BeginRun transition (or -1)
   bool m_liveMode;                                    ///< true if live mode specified in psana files option
   unsigned m_liveTimeOut;                             ///< live timeout value from config
-  std::string m_lastBeginCalibCycleDgram;             ///< Contents of the last BeginCalibCycle transition datagram.
+  boost::shared_ptr<std::string> m_lastBeginCalibCycleDgram;  ///< Contents of the last BeginCalibCycle transition datagram.
 };
 
 } // namespace PSXtcInput

@@ -38,7 +38,7 @@ namespace PSXtcInput {
 //----------------
 XtcEventOffset::XtcEventOffset (const std::vector<std::string> &filenames,
                                 const std::vector<int64_t> &offsets,
-                                const std::string &lastBeginCalibCycleDgram)
+                                const boost::shared_ptr<std::string> &lastBeginCalibCycleDgram)
   : PSEvt::EventOffset()
   , m_filenames(filenames)
   , m_offsets(offsets)
@@ -65,7 +65,7 @@ XtcEventOffset::offsets() const
   return m_offsets;
 }
 
-std::string
+const boost::shared_ptr<std::string>
 XtcEventOffset::lastBeginCalibCycleDgram() const
 {
   return m_lastBeginCalibCycleDgram;

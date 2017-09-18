@@ -52,14 +52,14 @@ public:
   // Default constructor
   XtcEventOffset (const std::vector<std::string> &filenames,
                   const std::vector<int64_t> &offsets,
-                  const std::string &lastBeginCalibCycleDgram) ;
+                  const boost::shared_ptr<std::string> &lastBeginCalibCycleDgram) ;
 
   // Destructor
   ~XtcEventOffset () ;
 
   virtual std::vector<std::string> filenames() const;
   virtual std::vector<int64_t> offsets() const;
-  virtual std::string lastBeginCalibCycleDgram() const;
+  virtual const boost::shared_ptr<std::string> lastBeginCalibCycleDgram() const;
 
   /// Dump object in human-readable format
   virtual void print(std::ostream& os) const;
@@ -71,7 +71,7 @@ private:
   // Data members
   std::vector<std::string> m_filenames;
   std::vector<int64_t> m_offsets;
-  std::string m_lastBeginCalibCycleDgram;
+  const boost::shared_ptr<std::string> m_lastBeginCalibCycleDgram;
 };
 
 } // namespace PSXtcInput

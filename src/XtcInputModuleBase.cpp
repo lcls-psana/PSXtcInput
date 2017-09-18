@@ -643,7 +643,7 @@ XtcInputModuleBase::fillEventOffset(const std::vector<XtcInput::Dgram>& dgList, 
       case Pds::TransitionId::BeginCalibCycle:
         {
           Pds::Dgram *dghdr = &*dgptr;
-          m_lastBeginCalibCycleDgram = std::string((char *)dghdr, sizeof(*dghdr) + dghdr->xtc.sizeofPayload());
+          m_lastBeginCalibCycleDgram = boost::make_shared<std::string>((char *)dghdr, sizeof(*dghdr) + dghdr->xtc.sizeofPayload());
           break;
         }
       default:
