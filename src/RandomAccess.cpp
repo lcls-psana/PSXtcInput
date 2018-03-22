@@ -239,9 +239,11 @@ public:
 
   static Legion::TaskID register_jump_task() {
     static const char * const task_name = "jump";
-    Legion::TaskVariantRegistrar registrar(task_id, task_name);
+    Legion::TaskVariantRegistrar registrar(task_id, task_name, false /* global */);
     registrar.add_constraint(Legion::ProcessorConstraint(Legion::Processor::IO_PROC));
-    Legion::Runtime::preregister_task_variant<bool, jump_task>(registrar, task_name);
+    Legion::Runtime *runtime = Legion::Runtime::get_runtime();
+    runtime->register_task_variant<bool, jump_task>(registrar);
+    runtime->attach_name(task_id, task_name);
     return task_id;
   }
 
