@@ -617,6 +617,10 @@ private:
       if (detmask & epicsmask[file]) {
         // found an event with epics data, update the epics offsets
         for (epicsmap::const_iterator itsrc=bit2SrcVec[file].begin(); itsrc!=bit2SrcVec[file].end(); ++itsrc) {
+          // this can happen in cases where data files don't have any events.
+          // don't update epics info offsets in this case. this may
+          // not be correct, but it avoids segfaults in that unusual case. - cpo
+          if (einfo.size()==0) continue;
           if (itsrc->first & detmask) {
             Pds::Src src = itsrc->second;
             einfo[src2EpicsArray[src]].offset = itev->entry.i64OffsetXtc;
