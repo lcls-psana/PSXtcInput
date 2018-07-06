@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <sstream>
+#include <sys/stat.h>
 
 //-------------------------------
 // Collaborating Class Headers --
@@ -315,6 +316,30 @@ private:
 // this is the implementation of the per-run indexing.  shouldn't be too
 // hard to make it work for for per-calibcycle indexing as well.
 
+static bool checkfile(const char* fname) {
+    struct stat mystat;
+    if (stat(fname, &mystat)) {
+        MsgLog(logger, warning, "Unable to open file. Skipping: " << fname);
+        return 1;
+    }
+    if (mystat.st_size==0) {
+        MsgLog(logger, warning, "File has zero length.  Skipping: " << fname);
+        return 1;
+    }
+    return 0;
+}
+
+static bool checkIdxAndXtc(const XtcFileName &xtcfile) {
+    if (checkfile(xtcfile.path().c_str())) return 1;
+    string idxname = xtcfile.path();
+    string basename = xtcfile.basename();
+    size_t pos = idxname.find(basename,0);
+    idxname.insert(pos,"index/");
+    idxname.append(".idx");
+    if (checkfile(idxname.c_str())) return 1;
+    return 0;
+}
+
 class IndexRun {
 private:
   // the index files do not support multiple recording intervals
@@ -333,11 +358,12 @@ private:
     idxname.insert(pos,"index/");
     idxname.append(".idx");
     int fd = open(idxname.c_str(), O_RDONLY | O_LARGEFILE);
-    if (fd < 0) {
-      MsgLog(logger, warning, "Unable to open xtc index file " << idxname);
-      return 1;
-    }
     idxlist.readFromFile(fd);
+    if (idxlist.getL1().size()==0) {
+        // no events
+        MsgLog(logger, warning, "File has no events. Skipping: " << idxname.c_str());
+        return 1;
+    }
     ::close(fd);
     return 0;
   }
@@ -555,7 +581,12 @@ private:
       Pds::Index::IndexList idxlist;
       unsigned stream = (*it).stream();
       // get the DAQ index file, if it exists, otherwise ignore both idx/xtc files.
-      if (_getidx(*it, idxlist)) continue;
+      if (checkIdxAndXtc(*it)) {
+          continue;
+      }
+      if (_getidx(*it, idxlist)) {
+          continue;
+      }
       _xtc.add(*it);
       if (stream<80) {
         // store them in event table that includes DAQ data
@@ -597,6 +628,9 @@ private:
         _store(_idxioc,idxlist.getL1(),ifile);
       }
       ifile++;
+    }
+    if (_xtc.files().size()==0) {
+        MsgLog(logger, fatal, "No usable XTC or index files available");
     }
     _lastEpics.resize(_epicsSource.size());
 
