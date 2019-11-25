@@ -18,6 +18,7 @@
 //-----------------
 // C/C++ Headers --
 //-----------------
+#include <ostream>
 
 //-------------------------------
 // Collaborating Class Headers --
