@@ -63,7 +63,7 @@ namespace {
     if (fileName.empty()) return false;
     return (int(fileName.stream()) >= firstControlStream);
   }
-  
+
   unsigned absDiff(unsigned a, unsigned b) {
     if (b >= a) return b-a;
     return a-b;
@@ -119,7 +119,7 @@ DgramSourceFile::~DgramSourceFile ()
 }
 
 // Initialization method for datagram source
-void 
+void
 DgramSourceFile::init()
 {
   // will throw if no files were defined in config
@@ -127,7 +127,7 @@ DgramSourceFile::init()
     str << "Input files: ";
     std::copy(m_fileNames.begin(), m_fileNames.end(), std::ostream_iterator<std::string>(str, " "));
   }
-  
+
   // start reader thread
   std::string liveDbConn = configStr("liveDbConn", "");
   std::string liveTable = configStr("liveTable", "file");
@@ -148,17 +148,17 @@ DgramSourceFile::init()
     firstEventAfterConfigure = boost::make_shared<XtcFilesPosition>(filenames,
                                                                     offsets);
   }
-  m_readerThread.reset( new boost::thread( DgramReader ( m_fileNames.begin(), 
+  m_readerThread.reset( new boost::thread( DgramReader ( m_fileNames.begin(),
                                                          m_fileNames.end(),
-                                                         *m_dgQueue, 
+                                                         *m_dgQueue,
                                                          m_liveAvail,
-                                                         merge, liveDbConn, 
-                                                         liveTable, liveTimeout, runLiveTimeout,
-                                                         l1offset, 
+                                                         merge, liveDbConn,
+                                                         liveTimeout, runLiveTimeout,
+                                                         l1offset,
                                                          m_firstControlStream,
                                                          m_maxStreamClockDiffSec,
                                                          firstEventAfterConfigure) ) );
-  MsgLog(name(), debug, "config params: liveDbConn=" << liveDbConn << ", " 
+  MsgLog(name(), debug, "config params: liveDbConn=" << liveDbConn << ", "
          << "liveTable=" << liveTable << ", "
          << "liveTimeout=" << liveTimeout << ", "
          << "runLiveTimeout=" << runLiveTimeout << ", "
@@ -200,14 +200,14 @@ DgramSourceFile::liveAvail(int numEvents) {
 
 bool DgramSourceFile::sameEvent(const XtcInput::Dgram &eventDg, const XtcInput::Dgram &otherDg) const
 {
-  if (::isL1Accept(otherDg) and ::isL1Accept(eventDg) and 
+  if (::isL1Accept(otherDg) and ::isL1Accept(eventDg) and
       (::isFiducialMatchStream(otherDg, m_firstControlStream) or
        ::isFiducialMatchStream(eventDg, m_firstControlStream)) and
       fiducialSecondsMatch(eventDg, otherDg)) {
     return true;
   }
   if ((not ::isL1Accept(otherDg)) and
-      (not ::isL1Accept(eventDg)) and 
+      (not ::isL1Accept(eventDg)) and
       ::transitionsMatch(otherDg, eventDg) and
       ::clockTimesMatch(otherDg, eventDg)) {
     return true;
