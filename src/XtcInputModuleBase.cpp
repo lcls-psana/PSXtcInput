@@ -809,8 +809,12 @@ XtcInputModuleBase::fillEnv(const XtcInput::Dgram& dg, Env& env)
 
     if (xtc->contains.id() == Pds::TypeId::Id_Epics) {
       // call the converter which will fill config store
-      boost::shared_ptr<Pds::Xtc> xptr(dgptr, xtc);
-      m_cvt.convertEpics(xptr, env.epicsStore(), m_eventTagEpicsStore);
+      if (xtc->sizeofPayload()) {
+        boost::shared_ptr<Pds::Xtc> xptr(dgptr, xtc);
+        m_cvt.convertEpics(xptr, env.epicsStore(), m_eventTagEpicsStore);
+      } else {
+        MsgLog(name(), warning, name() << ": Found EPICS variable with no payload. Skipping.");
+      }
     }
     
   }
