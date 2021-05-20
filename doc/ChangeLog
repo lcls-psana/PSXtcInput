@@ -1,6 +1,5 @@
 #--------------------------------------------------------------------------
 # File and Version Information:
-#  $Id$
 #
 # Description:
 #  ChangeLog file for package PSXtcInput
@@ -10,6 +9,12 @@ Package author: Andy Salnikov
 
 Please describe any modifications that you made to the package in the
 reverse time order.
+
+Tag: V01-00-02
+2021-05-19 Mikhail Dubrovin
+- src/XtcInputModuleBase.cpp - constrain a number of warning messages to 10
+
+a lot of undocumeted tags...  V00-15-24 -> V00-15-33, V00-16-00, V01-00-00
 
 Tag: V00-15-22
 2016-09-26 Christopher O'Grady

@@ -802,6 +802,8 @@ XtcInputModuleBase::fillEnv(const XtcInput::Dgram& dg, Env& env)
       
   }
 
+  static unsigned counter=0;
+
   // Convert EPICS too and store it in EPICS store
   // Loop over all XTC contained in the datagram
   XtcInput::XtcIterator iter(&dgptr->xtc);
@@ -813,7 +815,13 @@ XtcInputModuleBase::fillEnv(const XtcInput::Dgram& dg, Env& env)
         boost::shared_ptr<Pds::Xtc> xptr(dgptr, xtc);
         m_cvt.convertEpics(xptr, env.epicsStore(), m_eventTagEpicsStore);
       } else {
-        MsgLog(name(), warning, name() << ": Found EPICS variable with no payload. Skipping.");
+        counter ++;
+	if (counter<11) {
+          MsgLog(name(), warning, name() << ": Found EPICS variable with no payload. Skipping.");// << std::to_string(counter));
+	  if (counter==10) {
+            MsgLog(name(), warning, name() << ": DO NOT PRINT ABOVE WARNINGS ANY MORE");
+          }
+        }
       }
     }
     
