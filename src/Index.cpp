@@ -157,7 +157,7 @@ public:
   }
 
 private:
-  enum {MaxDgramSize=0x2000000};
+  enum {MaxDgramSize=0x6000000};
   vector<int> _fd;
   vector<XtcFileName> _xtcFileList;
 };
